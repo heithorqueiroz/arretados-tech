@@ -1,10 +1,15 @@
 # arretados-tech
-arretados tech is a 5-peeople team braving fighting in the NASA Space Apps challenging 
+arretados tech is a 5-peeople team created for the NASA Space Apps challenge 
+
+Here it is presented a JavaScript code
+
+The procedures to run it are the following:
 
 a.open the branch ndci in https://code.earthengine.google.com/
 
 b.to runing the code it is required a free account in Google Earth Engine
 
+Other notes:
 normal Github flow:
 a.create a new branchX
 b.make the editions
