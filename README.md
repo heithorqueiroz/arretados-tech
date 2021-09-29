@@ -3,7 +3,7 @@ arretados tech is a 5-peeople team braving fighting in the NASA Space Apps chall
 
 a.open the branch ndci in https://code.earthengine.google.com/
 
-b.to runing the code it is required an account in Google Earth Engine
+b.to runing the code it is required a free account in Google Earth Engine
 
 normal Github flow:
 a.create a new branchX
