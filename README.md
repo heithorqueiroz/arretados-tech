@@ -1,5 +1,5 @@
 # arretados-tech
-arretados tech is a 5-peeople team created for the NASA Space Apps challenge 
+arretados tech is a 5-people team created for the NASA Space Apps challenge 
 
 Here it is presented a JavaScript code
 
