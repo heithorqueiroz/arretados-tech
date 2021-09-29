@@ -1,0 +1,168 @@
+//adicionar geometria 
+var geometriaInicial = entornoCeraima 
+  //geometria para seleção das imagens
+
+ //centralizar o mapa  
+  Map.setCenter(-42.67, -14.275, 14) //reservatório Ceraíma Guanambi/BA;
+  //Map.setCenter(-41.83,-13.55, 13) //açude Brumado em Rio de Contas/BA;
+  //Map.setCenter(-42.20,-13.45, 13) //lago em Parnamirim/BA;
+  //Map.setCenter(-40.14,-9.26, 8) //RSF em Sobradinho/BA e P. Afonso/BA;
+  //Map.setCenter(-36.15, -7.51,12) //açude Boqueirão/PB
+//imagens sentinel 
+  //fonte desse trecho de algoritmo: https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR)
+  /**
+  * Function to mask clouds using the Sentinel-2 QA band
+  * @param {ee.Image} image Sentinel-2 image
+  * @return {ee.Image} cloud masked Sentinel-2 image
+  */
+  function maskS2clouds(image) {
+  var qa = image.select('QA60');
+  
+  // Bits 10 and 11 are clouds and cirrus, respectively.
+  var cloudBitMask = 1 << 10;
+  var cirrusBitMask = 1 << 11;
+  
+  // Both flags should be set to zero, indicating clear conditions.
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0)
+      .and(qa.bitwiseAnd(cirrusBitMask).eq(0));
+  
+  return image.updateMask(mask).divide(10000);
+  }
+
+// Map the function over one year of data and take the median.
+    // Load Sentinel-2 TOA reflectance data.
+    var datasetTime2019DEZ = ee.ImageCollection('COPERNICUS/S2_SR')
+                        .filterDate('2019-12-12', '2019-12-18')
+                        //.filterDate('2021-05-15', '2021-05-22')
+                        // Pre-filter to get less cloudy granules.
+                        //.filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+                        .map(maskS2clouds)
+                        //Filtrar geometria
+                        .filterBounds(geometriaInicial); //select images intersecting the bounds
+
+// Get the number of images in each Image Collection.
+  var count = datasetTime2019DEZ.size();
+  print('qtd imagens usadas: ', count);
+ 
+ 
+//---------------ÍNDICES 
+//cálculo do NDWI: máscara de água
+       //sentinel 2019 DEZ
+       var composite = datasetTime2019DEZ.median()
+          var ndwi2019DEZ = composite.expression(
+          '(green-nir)/(green+nir)',
+          {
+          green: composite.select('B3'),
+          nir: composite.select('B8'),
+          });
+          //Map.addLayer(ndwi2019DEZ, {min: -1, max: 1, palette: ['green', 'white', 'blue']},'ndwi2019DEZ');
+ 
+//water mask image
+  var maskWater2019DEZ = ndwi2019DEZ.updateMask(ndwi2019DEZ.gt(0));  //gt=grater than
+  var water2019DEZ = ee.Image(1).updateMask(maskWater2019DEZ);
+  var water2019DEZ = water2019DEZ.clip(geometriaInicial) //clip to inicial study area
+  //Map.addLayer(water2019DEZ,{palette: ['red']},'Water2019DEZ'); 
+  
+  //vetorizar: water mask  
+    var water2019DEZvector = water2019DEZ.reduceToVectors({geometry: Map.getBounds(true), scale: Map.getScale() * 1 }) //ATENÇÃO: verificar esse getScale (estava setado para 0.5, mas eu alterei)
+    //Map.addLayer(water2019DEZvector, {}, 'water2019DEZvector')
+
+                    //--------------------
+                    //STATÍSTICAS ÁGUA PIBIC2020
+                      //declaração de variáveis
+                      var img1 = water2019DEZ
+                    
+                    //especificar geometria para obter estatística
+                      var geometriaStats = geometriaInicial
+                        //definida na primeira parte do algoritmo 
+                      
+                      //calculo de área
+                      var areaImg1 = img1.multiply(ee.Image.pixelArea())
+                                        .reduceRegion(ee.Reducer.sum(),geometriaStats,10,null,null,true,1e10)
+                                        .get('constant')
+                                      print('Water extent km²',ee.Number(areaImg1).divide(1e6));
+                     //print images
+                      //Map.addLayer(img1, {palette: ['blue']}, 'img1')
+ 
+//NDCI
+       var composite = datasetTime2019DEZ.median()
+          var ndci2019DEZ = composite.expression(
+          '(rededge-red)/(rededge+red)',
+          {
+          rededge: composite.select('B5'),
+          red: composite.select('B4'),
+          });
+          //Map.addLayer(ndci2019DEZ, {min: -0.04, max: 0.56, palette: ['green', 'white', 'red']},'ndci2019DEZ');
+
+  var maskAlgae2019DEZ = ndci2019DEZ.updateMask(ndci2019DEZ.gt(-0.3));  //gt=grater than
+  var algae2019DEZ = ee.Image(1).updateMask(maskAlgae2019DEZ);
+  //Map.addLayer(algae2019DEZ,{palette: ['green']},'Algae2019DEZ');
+
+  
+  var NDCImaskNDWI = ndci2019DEZ.clip(water2019DEZvector.geometry())
+  //Map.addLayer(NDCImaskNDWI, {min: -0.04, max: 0.56, palette: ['OrangeRed','LimeGreen','FireBrick']},'NDCImaskNDWI2019DEZ');
+ 
+ 
+                        //----------------
+                        //ADD LEGEND
+                        // create vizualization parameters
+                        var viz = {min: -1, max: 1, palette:['ffffff','b7f0ae','21f600','0000FF','FDFF92','FF2700','d600ff']};
+                        // add the map
+                        Map.addLayer(NDCImaskNDWI, viz);
+
+
+
+                        //LEGEND SETTINGS
+                        var palette = ['ffffff','b7f0ae','21f600','0000FF','FDFF92','FF2700','d600ff']
+                        function createColorBar(titleText, palette, min, max) {
+                        // Legend Title
+                        var title = ui.Label({
+                          value: titleText, 
+                          style: {fontWeight: 'bold', textAlign: 'center', stretch: 'horizontal'}});
+                      
+                        // Colorbar
+                        var legend = ui.Thumbnail({
+                          image: ee.Image.pixelLonLat().select(0),
+                          params: {
+                            bbox: [0, 0, 1, 0.1],
+                            dimensions: '200x20',
+                            format: 'png', 
+                            palette: palette},
+                          style: {stretch: 'horizontal', margin: '8px 8px', maxHeight: '40px'},
+                        });
+                        
+                        // Legend Labels
+                        var labels = ui.Panel({
+                          widgets: [
+                            ui.Label(min, {margin: '4px 10px',textAlign: 'left', stretch: 'horizontal'}),
+                            ui.Label((min+max)/2, {margin: '4px 20px', textAlign: 'center', stretch: 'horizontal'}),
+                            ui.Label(max, {margin: '4px 10px',textAlign: 'right', stretch: 'horizontal'})],
+                          layout: ui.Panel.Layout.flow('horizontal')});
+                        
+                        // Create a panel with all 3 widgets
+                        var legendPanel = ui.Panel({
+                          widgets: [title, legend, labels],
+                          style: {position: 'bottom-left', padding: '8px 15px'}
+                        })
+                        return legendPanel
+                        }
+                        // Call the function to create a colorbar legend  
+                        var colorBar = createColorBar('NDCI', palette, viz['min'], viz['max'])
+                        
+                        Map.add(colorBar)
+                      
+                      
+                            //----------------
+                            //PRINT HISTOGRAM
+                            // Generate the histogram data.  Use minBucketWidth for nice sized buckets.
+                              var histogram = ui.Chart.image.histogram({
+                                image: NDCImaskNDWI,
+                                region: geometriaInicial,
+                                scale: 200,
+                                //minBucketWidth: 300
+                              });
+                              histogram.setOptions({
+                                title: 'Histogram'
+                              });
+                              
+                              print(histogram);
