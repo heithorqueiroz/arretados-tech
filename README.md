@@ -7,7 +7,7 @@ The procedures to run it are the following:
 
 a.open the branch ndci in https://code.earthengine.google.com/
 
-b.to runing the code it is required a free account in Google Earth Engine
+b.to run the code it is required a free account in Google Earth Engine
 
 Other notes:
 normal Github flow:
