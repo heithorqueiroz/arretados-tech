@@ -1,0 +1,187 @@
+
+/*README
+Short description: 
+Code with Cyanobacteria detection and visual presentation for the website CyanoAlert System.
+This algorithm presents the following efforts:
+  1. detect water extent (Sentinel 2 MSI);
+  2. detect Cyanobacteria Index (CI) (Sentinel 3 OLCI); and
+  3. set visual parameters for the website CyanoAlert System.
+Settable parameters:  geometriaInicial, Map.setCenter, .filterDate
+In this code, we define only one reservoir to easily use as a prototype for Nasa Hackathon*/
+
+
+//Preliminar parameters definitions          
+//define geometry to images selection 
+var polygon = geometrySelected //runing as test in a Brazilian reservior
+var geometriaInicial = ee.Geometry(polygon)
+   //center map   
+   //Map.centerObject(geometriaInicial, 12);
+   Map.setCenter(-36.15, -7.51,12)
+    
+//define date interval to select images
+var dateStart = ('2019-12-01') 
+var dateEnd = ('2019-12-03')
+
+//1st EFFORT---------------------------------
+//SENTINEL 2: used for automatic detection of water extent (reservoirs boundaries)
+
+  //The function to mask cloud is pre-establhish for the case when more the one image are selected in the date interval
+    /*** Function to mask clouds using the Sentinel-2 QA band
+        * @param {ee.Image} image Sentinel-2 image
+          * @return {ee.Image} cloud masked Sentinel-2 image
+    */
+  function maskS2clouds(image) {
+  var qa = image.select('QA60');
+  
+  // Bits 10 and 11 are clouds and cirrus, respectively.
+  var cloudBitMask = 1 << 10;
+  var cirrusBitMask = 1 << 11;
+  
+  // Both flags should be set to zero, indicating clear conditions.
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0)
+      .and(qa.bitwiseAnd(cirrusBitMask).eq(0));
+  
+  return image.updateMask(mask).divide(10000);
+  }
+
+
+  // For more than 1 image,  the following function takes the median.
+    // Load Sentinel-2 TOA reflectance data.
+    var datasetTime = ee.ImageCollection('COPERNICUS/S2_SR')
+                        .filterDate(dateStart, dateEnd) //filter by date
+                        .map(maskS2clouds) //mask function for if selected more than one image
+                        .filterBounds(geometriaInicial); //filter images intersecting the bounds
+
+// Get the number of images in each Image Collection.
+  var count = datasetTime.size();
+  print('qtd imagens usadas: ', count);
+
+//Masking water extent using NDWI (Normalized Difference Vegetation Index)
+  var composite = datasetTime.median()
+  var ndwiTime = composite.expression(
+  '(green-nir)/(green+nir)',
+  {
+  green: composite.select('B3'),
+  nir: composite.select('B8'),
+  });
+  //Map.addLayer(ndwiTime, {min: -1, max: 1, palette: ['green', 'white', 'blue']},'ndwiTime');
+
+//Water extent masked image subset
+  var maskWater = ndwiTime.updateMask(ndwiTime.gt(0));  //gt=grater than
+  var waterUpdated = ee.Image(1).updateMask(maskWater);
+  var waterCliped = waterUpdated.clip(geometriaInicial) //clip to inicial study area
+  //Map.addLayer(water2019DEZ,{palette: ['red']},'Water2019DEZ'); 
+  
+  //vetorized: water mask  
+    var waterVector = waterCliped.reduceToVectors({geometry: Map.getBounds(true), scale: Map.getScale() * 1 }) 
+    //Map.addLayer(waterVector, {}, 'waterVector')
+
+
+//2nd EFFORT---------------------------------
+//COMPUTE CI INDEX (Cyanobacteria Index, Mishra, et al. 2019 and Wynne et al. 2008)
+ 
+  var datasetS3 = ee.ImageCollection('COPERNICUS/S3/OLCI') //select Sentinel 3 OLCI collection
+                 .filterDate(dateStart, dateEnd)
+    
+       var composite = datasetS3.median()
+          var cyanoIndex = composite.expression(
+          '((ps-psmin)-(psmax-psmin)*((ps-psmin)/(psmax-psmin))*-1)', //(CI = SS*-1)
+          {
+          ps: composite.select('Oa10_radiance'),
+          psmin: composite.select('Oa08_radiance'),
+          psmax: composite.select('Oa11_radiance')
+          });
+
+          var cyanoIndexmask = cyanoIndex.clip(waterVector.geometry())
+          
+
+//3rd EFFORT---------------------------------
+//SET INTERFACE APP PARAMETERS
+                        //----------------
+                        //ADD LEGEND
+                        // create vizualization parameters top plot NDCI map
+                        var viz2 = {min: -0.1, max: 0.5, palette:['0000FF','21f600','FDFF92','FF2700']};
+                        // add the map
+                        //Map.addLayer(NDCImaskNDWI, viz2, 'NDCI');
+
+                         var viz = {min: -0.5, max: 0, palette:['0000FF','21f600','FDFF92','FF2700']};
+                        // add the map
+                        Map.addLayer(cyanoIndexmask, viz,'Cyano Index');
+
+
+                        //LEGEND SETTINGS
+                        var palette = ['FF2700']
+                        function createColorBar(titleText, palette, min, max) {
+                        // Legend Title
+                        var title = ui.Label({
+                          value: titleText, 
+                          style: {fontWeight: 'bold', textAlign: 'center', stretch: 'horizontal'}});
+                      
+                        // Colorbar
+                        var legend = ui.Thumbnail({
+                          image: ee.Image.pixelLonLat().select(0),
+                          params: {
+                            bbox: [0, 0, 1, 0.1],
+                            dimensions: '20x10',
+                            format: 'png', 
+                            palette: palette},
+                          style: {stretch: 'horizontal', margin: '8px 8px', maxHeight: '40px'},
+                        });
+                        
+                        // Legend Labels
+                        var labels = ui.Panel({
+                          widgets: [
+                            ui.Label('', {margin: '4px 10px',textAlign: 'left', stretch: 'horizontal'}),
+                            ui.Label('', {margin: '4px 20px', textAlign: 'center', stretch: 'horizontal'}),
+                            ui.Label('', {margin: '4px 10px',textAlign: 'right', stretch: 'horizontal'})],
+                          layout: ui.Panel.Layout.flow('horizontal')});
+                                                          
+                        // Create a panel with all 3 widgets
+                        var legendPanel = ui.Panel({
+                          widgets: [title, legend, labels],
+                          style: {position: 'bottom-left', padding: '8px 15px'}
+                        })
+                        return legendPanel
+                        }
+                        // Call the function to create a colorbar legend  
+                        var colorBar = createColorBar('CYANOALERT', palette, viz['min'], viz['max'])
+                        
+                        Map.add(colorBar)
+
+                      //---------------------------------
+                      //SPLIT PANEL             
+                      
+                      
+                      var linkedMap = ui.Map();
+                      linkedMap.addLayer(datasetTime, {bands: ['B4', 'B3', 'B2'], min: 0, max: 0.3}, 'Natural color image');
+                      
+                             // Link the default Map to the other map.
+                      var linker = ui.Map.Linker([ui.root.widgets().get(0), linkedMap]);
+                      
+                      // Make an inset map and add it to the linked map.
+                        //var inset = ui.Map({style: {position: "bottom-right"}});
+                        //linkedMap.add(inset);
+                      
+                      // Register a function to the linked map to update the inset map.
+                          //linkedMap.onChangeBounds(function() {
+                          //  var bounds = ee.Geometry.Rectangle(Map.getBounds());
+                          //  inset.centerObject(bounds);
+                          //  inset.layers().set(0, bounds);
+                          //});
+                      
+                      // Create a SplitPanel which holds the linked maps side-by-side.
+                      var splitPanel = ui.SplitPanel({
+                        firstPanel: linker.get(0),
+                        secondPanel: linker.get(1),
+                        orientation: 'horizontal',
+                        wipe: true,
+                        style: {stretch: 'both'}
+                      });
+                      
+                      // Set the SplitPanel as the only thing in root.
+                      ui.root.widgets().reset([splitPanel]);
+                      //linkedMap.setCenter(-122.5048, 38.3998, 12);                 
+                                              
+                                              
+                                                                
+                
