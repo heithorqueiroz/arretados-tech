@@ -14,4 +14,4 @@ normal Github flow:
 a.create a new branchX
 b.make the editions
 c.do pull request to update de the main bhanch
-d.delete the branchX 
+d.delete the branchX
